@@ -3,13 +3,13 @@ Application settings loaded from environment / .env file.
 
 Fixes:
 - Railway `postgres://` → `postgresql+psycopg2://`
-- Regex-based password encoding (safe for special chars like @ : # %)
+- Correctly encodes DB password using LAST '@' separator logic
+- Safe for special chars: @ : # % etc.
 """
 
 from functools import lru_cache
 from typing import List
-import re
-from urllib.parse import quote
+from urllib.parse import urlparse, urlunparse, quote
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,7 +17,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", extra="ignore", case_sensitive=False
+        env_file=".env",
+        extra="ignore",
+        case_sensitive=False,
     )
 
     # ── Database ─────────────────────────────────────────────
@@ -75,7 +77,7 @@ class Settings(BaseSettings):
     REMINDER_CHECK_INTERVAL: int = 60
 
     # ───────────────────────────────────────────────────────
-    # 🔥 DATABASE URL FIX (REGEX SAFE VERSION)
+    # 🔥 DATABASE URL FIX (PROPER SOLUTION)
     # ───────────────────────────────────────────────────────
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
@@ -89,22 +91,33 @@ class Settings(BaseSettings):
         elif v.startswith("postgresql://") and "+psycopg" not in v:
             v = v.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-        # ✅ Step 2: Regex দিয়ে password safely extract + encode
-        pattern = re.compile(
-            r"^(?P<prefix>postgresql\+psycopg2://[^:]+:)(?P<password>.*?)(?P<suffix>@.+)$"
-        )
+        try:
+            parsed = urlparse(v)
 
-        match = pattern.match(v)
-        if match:
-            prefix = match.group("prefix")
-            password = match.group("password")
-            suffix = match.group("suffix")
+            # If no credentials → return as-is
+            if "@" not in parsed.netloc:
+                return v
 
-            encoded_password = quote(password, safe="")
+            # ✅ Step 2: split LAST '@' (critical fix)
+            creds, host = parsed.netloc.rsplit("@", 1)
 
-            return f"{prefix}{encoded_password}{suffix}"
+            # Split user + password
+            if ":" in creds:
+                user, password = creds.split(":", 1)
 
-        return v
+                # encode password safely
+                encoded_password = quote(password, safe="")
+
+                new_netloc = f"{user}:{encoded_password}@{host}"
+            else:
+                new_netloc = parsed.netloc
+
+            # rebuild URL
+            return urlunparse(parsed._replace(netloc=new_netloc))
+
+        except Exception:
+            # fail-safe (never crash app)
+            return v
 
     # ── Helpers ─────────────────────────────────────────────
     @property
@@ -112,7 +125,7 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
 
-# ── Cached settings instance ────────────────────────────────
+# ── Cached settings ─────────────────────────────────────────
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
