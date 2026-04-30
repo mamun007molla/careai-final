@@ -3,12 +3,13 @@ Application settings loaded from environment / .env file.
 
 Fixes:
 - Railway `postgres://` → `postgresql+psycopg2://`
-- URL-encodes special characters in DB password (critical for SQLAlchemy)
+- Regex-based password encoding (safe for special chars like @ : # %)
 """
 
 from functools import lru_cache
 from typing import List
-from urllib.parse import urlsplit, urlunsplit, quote
+import re
+from urllib.parse import quote
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -74,7 +75,7 @@ class Settings(BaseSettings):
     REMINDER_CHECK_INTERVAL: int = 60
 
     # ───────────────────────────────────────────────────────
-    # 🔥 DATABASE URL FIX (IMPORTANT)
+    # 🔥 DATABASE URL FIX (REGEX SAFE VERSION)
     # ───────────────────────────────────────────────────────
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
@@ -88,37 +89,20 @@ class Settings(BaseSettings):
         elif v.startswith("postgresql://") and "+psycopg" not in v:
             v = v.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-        # ✅ Step 2: Encode password safely
-        try:
-            parts = urlsplit(v)
+        # ✅ Step 2: Regex দিয়ে password safely extract + encode
+        pattern = re.compile(
+            r"^(?P<prefix>postgresql\+psycopg2://[^:]+:)(?P<password>.*?)(?P<suffix>@.+)$"
+        )
 
-            if parts.username and parts.password:
-                encoded_password = quote(parts.password, safe="")
+        match = pattern.match(v)
+        if match:
+            prefix = match.group("prefix")
+            password = match.group("password")
+            suffix = match.group("suffix")
 
-                # rebuild netloc
-                host = parts.hostname or ""
-                if parts.port:
-                    host += f":{parts.port}"
+            encoded_password = quote(password, safe="")
 
-                auth = parts.username
-                if encoded_password:
-                    auth += f":{encoded_password}"
-
-                netloc = f"{auth}@{host}"
-
-                v = urlunsplit(
-                    (
-                        parts.scheme,
-                        netloc,
-                        parts.path,
-                        parts.query,
-                        parts.fragment,
-                    )
-                )
-
-        except Exception:
-            # fallback safe
-            return v
+            return f"{prefix}{encoded_password}{suffix}"
 
         return v
 
