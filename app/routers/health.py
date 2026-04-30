@@ -48,6 +48,11 @@ from app.schemas import (
 router = APIRouter(prefix="/health", tags=["Module 2 — Health Management"])
 
 
+@router.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # Helper — assemble a MedicalVisitOut with embedded attachments + doctor info
 # ════════════════════════════════════════════════════════════════════════════

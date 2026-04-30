@@ -11,12 +11,14 @@ from fastapi.responses import JSONResponse
 from app.ai.ai_router import get_ai_status, reset_ollama_cache, AIServiceError
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
+
+# ✅ IMPORTANT: alias to avoid naming conflict
 from app.routers import (
     auth,
     files,
     links,
     physical,
-    health,
+    health as health_router,  # ← FIX
     notifications,
     reminder,
     uploaded_prescriptions,
@@ -31,7 +33,7 @@ logging.basicConfig(
 
 
 # ─────────────────────────────────────────────────────────────
-# 🔥 SAFE BACKGROUND SCHEDULER (NON-BLOCKING)
+# 🔥 SAFE BACKGROUND SCHEDULER
 # ─────────────────────────────────────────────────────────────
 async def run_scheduler_safe():
     try:
@@ -42,19 +44,15 @@ async def run_scheduler_safe():
         logging.error(f"❌ Scheduler failed: {e}")
 
 
-# ─────────────────────────────────────────────────────────────
-# 🔥 LIFESPAN (NON-BLOCKING STARTUP)
-# ─────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging.info("🔥 App starting...")
 
-    # Run scheduler in background (DO NOT BLOCK STARTUP)
+    # run scheduler in background (non-blocking)
     asyncio.create_task(run_scheduler_safe())
 
     yield
 
-    # Shutdown safely
     try:
         stop_scheduler()
         logging.info("🛑 Scheduler stopped")
@@ -68,7 +66,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CareAI — Elderly Monitoring",
     version="4.9.1",
-    description="Production-ready (Railway fix: healthcheck + scheduler + stability)",
+    description="Production-ready backend",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -104,7 +102,7 @@ async def ai_service_error_handler(request: Request, exc: AIServiceError):
 
 
 # ─────────────────────────────────────────────────────────────
-# 🧠 META ROUTES (HEALTH + ROOT)
+# 🧠 META ROUTES
 # ─────────────────────────────────────────────────────────────
 meta = APIRouter(tags=["Meta"])
 
@@ -119,15 +117,15 @@ def root():
     }
 
 
-# 🔥 Railway healthcheck (MUST be instant)
+# ✅ Railway / Render healthcheck
 @meta.get("/health-check")
 def health_check():
     return {"status": "ok"}
 
 
-# optional (keep both)
+# ✅ renamed to avoid conflict
 @meta.get("/health")
-def health():
+def health_status():
     return {"status": "ok"}
 
 
@@ -151,7 +149,10 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(links.router, prefix="/api/v1")
 app.include_router(files.router, prefix="/api/v1")
 app.include_router(physical.router, prefix="/api/v1")
-app.include_router(health.router, prefix="/api/v1")
+
+# ✅ FIXED
+app.include_router(health_router.router, prefix="/api/v1")
+
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(reminder.router, prefix="/api/v1")
 app.include_router(reminder.prescriptions_router, prefix="/api/v1")
