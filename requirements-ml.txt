@@ -1,0 +1,25 @@
+# ────────────────────────────────────────────────────────────────────────────
+# ML EXTRAS — install ONLY if you want real fall-detection (Module 1).
+# These libraries currently lack pre-built wheels for Python 3.14.
+#
+# RECOMMENDED PYTHON: 3.11 or 3.12 for these.
+#
+# Install:
+#     pip install -r requirements-ml.txt
+#
+# If install fails on Python 3.14, do one of:
+#  - Switch to Python 3.11 / 3.12 (recommended)
+#  - Skip this file — fall detection will run in "disabled" mode but the
+#    rest of the app, including video upload + DB storage, still works.
+# ────────────────────────────────────────────────────────────────────────────
+
+opencv-python-headless>=4.10.0,<5.0
+mediapipe>=0.10.14
+xgboost>=2.1.1
+numpy>=1.26.0,<3.0
+pandas>=2.2.0
+
+# Used by feature_extraction modules (per-frame & feature-eng):
+pywavelets>=1.6.0
+scipy>=1.13.0
+scikit-learn>=1.5.0
